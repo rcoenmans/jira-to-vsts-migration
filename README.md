@@ -45,6 +45,8 @@ while len(tmp) == m:
 ```
 ### 3. Create a work item in Azure DevOps
 The next step is to create a corresponding work item in Azure DevOps for each issue in the results.
+
+We would like to keep the original CREATED_DATE value from Jira instead of the *migration date* which Azure DevOps will populate for us automatically. Therefore, we need to set `bypass_rules=True` in the call to `vsts_client.create_workitem()`. This allows us to bypass the rules for fields that are typically automatically populated (based on current date/time, user running the script, etc.) and set them with the original values from Jira.
 ```python
 for result in results:
     # We first need to get all the properties of the issue in Jira (remember the query only returns a list of ids)
@@ -82,7 +84,6 @@ for result in results:
     # Create the work item in Azure DevOps
     workitem = vsts_client.create_workitem('Contoso', issue.type, doc, bypass_rules=True)
 ```
-> We would like to keep the original CREATED_DATE value from Jira instead of the *migration date* which Azure DevOps will populate for us automatically. Therefore, we need to set `bypass_rules=True` in the call to `vsts_client.create_workitem()`. This allows us to bypass the rules for fields that are typically automatically populated (based on current date/time, user running the script, etc.) and set them with the original values from Jira.
 ### 4. Migrate attachments
 ```python
 # Migrate attachments
