@@ -2,14 +2,12 @@
 A Jira to Azure DevOps migration script written in Python. This script was created and used during a project where issues (user stories, bugs and tasks) were maintained in Jira and the code was stored in Azure DevOps. Back then there wasn't any integration between Jira and Azure DevOps (or VSTS as it was called) so we had to go back and forth. 
 
 We decided to move everything to Azure DevOps so we have full traceability on all the work that's been done. And since nobody wanted to migrate 50+ user stories by hand, I decided to write a simple migration script that copies the most important bits of information.
-
 ## Getting started
 The script relies on 2 python libraries that you'll find on PyPi.
 ```bash
 $ pip install vsts-client
 $ pip install jira-client
 ```
-
 ## Migration script
 ### 1. Connect to Jira and Azure DevOps
 To connect to Jira simply provide your user name/password to the client. In order to connect to Azure DevOps, you need to obtain a [personal access token](https://docs.microsoft.com/en-us/vsts/integrate/get-started/authentication/pat).
@@ -20,7 +18,6 @@ jira_client = JiraClient("<organisation>.atlassian.net", "<username>", "<passwor
 # Connect to VSTS
 vsts_client = VstsClient("dev.azure.com/<organisation>", "<personal access token>")
 ```
-
 ### 2. Query all issues that need to be migrated
 For our particular project, we're migrating all user stories, tasks and bugs that are still open and not part of any sprint (previous or current). Note that the query returns 50 results at a time and keeps on querying untill it has fetched all items. 
 
@@ -46,7 +43,6 @@ while len(tmp) == m:
     tmp = client.search(jql, n, m)
     results += tmp
 ```
-
 ### 3. Create a work item in Azure DevOps
 The next step is to create a corresponding work item in Azure DevOps for each issue in the results.
 ```python
@@ -87,3 +83,45 @@ for result in results:
     workitem = vsts_client.create_workitem('Contoso', issue.type, doc, bypass_rules=True)
 ```
 The most **important bit** really that last parameter `bypass_rules` in the call to `vsts_client.create_workitem()` which allows us to bypass the rules for CREATED_BY, CREATED_DATE and CHANGED_DATE and provide them with the original values from Jira. In other words, we would like to keep the original CREATED_DATE value from Jira instead of the *migration date* which Azure DevOps will populate for us.  
+### 4. Migrate attachments
+```python
+# Migrate attachments
+if len(issue.attachments) > 0:
+    for attachment in issue.attachments:
+        vsts_attachment = None
+
+        # Download the attachment(s) from Jira
+        with open('./tmp/{}'.format(attachment.filename), 'wb') as f:
+            f.write(jira_client.download_attachment(attachment.id, attachment.filename))
+        
+        # Upload the attachment(s) to VSTS
+        with open('./tmp/{}'.format(attachment.filename), 'rb') as f:
+            vsts_attachment = vsts_client.upload_attachment(attachment.filename, f)
+
+        # Link the attachment(s) to the work item
+        vsts_client.add_attachment(workitem.id, vsts_attachment.url, 'Migrating attachment {}'.format(attachment.filename))
+```
+### 5. Link to Feature or Epic (OPTIONAL)
+I can't remember exactly why we mapped an epic in Jira to a feature in Azure DevOps. I think Jira, back then, didn't have the concept of a *feature*. 
+```python
+# Link to a feature (epic in Jira is mapped to Feature in DevOps but you can link it to an Epic as well)
+if issue.epic is not None:
+    # Determine if the feature exists already
+    feature = fetch_workitem(vsts_client, issue.epic.name)
+
+    if feature is None:
+        doc = JsonPatchDocument()
+        doc.add(JsonPatchOperation('add', SystemFields.TITLE, issue.epic.name))
+        doc.add(JsonPatchOperation('add', SystemFields.DESCRIPTION, issue.epic.summary))
+        
+        if issue.epic.done:
+            doc.add(JsonPatchOperation('add', SystemFields.STATE, State.RESOLVED))
+        else:
+            doc.add(JsonPatchOperation('add', SystemFields.STATE, State.ACTIVE))
+
+        # Create the feature in Azure DevOps
+        feature = vsts_client.create_workitem('Contoso', 'Feature', doc)
+    
+    # Link the user story with feature (PARENT)
+    vsts_client.add_link(workitem.id, feature.id, LinkTypes.PARENT)
+```
