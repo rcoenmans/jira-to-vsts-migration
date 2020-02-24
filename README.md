@@ -82,7 +82,7 @@ for result in results:
     # Create the work item in Azure DevOps
     workitem = vsts_client.create_workitem('Contoso', issue.type, doc, bypass_rules=True)
 ```
-The most **important bit** really that last parameter `bypass_rules` in the call to `vsts_client.create_workitem()` which allows us to bypass the rules for CREATED_BY, CREATED_DATE and CHANGED_DATE and provide them with the original values from Jira. In other words, we would like to keep the original CREATED_DATE value from Jira instead of the *migration date* which Azure DevOps will populate for us.  
+> We would like to keep the original CREATED_DATE value from Jira instead of the *migration date* which Azure DevOps will populate for us automatically. Therefore, we need to set `bypass_rules=True` in the call to `vsts_client.create_workitem()`. This allows us to bypass the rules for fields that are typically automatically populated (based on current date/time, user running the script, etc.) and set them with the original values from Jira.
 ### 4. Migrate attachments
 ```python
 # Migrate attachments
